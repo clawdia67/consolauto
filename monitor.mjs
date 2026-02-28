@@ -61,10 +61,11 @@ async function switchTo(mode) {
   } else if (activeMode === "stagehand") {
     console.log("[switch] stagehand → playwright");
     await SH.closeStagehand(); // saves cookies to JSON, closes Stagehand
-    // Playwright uses persistent profile — session already on disk, no restore needed
+    await PW.killStaleChrome(); // clear any lingering Chrome profile lock
     await notify("Prenotami Monitor", "⚙️ switching to Playwright (00:30–23:30)");
   } else {
-    // Cold start
+    // Cold start — kill any stale Chrome left from previous runs
+    await PW.killStaleChrome();
     if (mode === "stagehand") {
       await SH.initStagehand();
     }
