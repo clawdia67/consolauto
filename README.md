@@ -1,41 +1,57 @@
 # prenotami-monitor
 
-AI-powered passport slot monitor for [prenotami.esteri.it](https://prenotami.esteri.it/Services/Booking/5810) (Consolato Barcellona).
+Hybrid passport slot monitor for [prenotami.esteri.it](https://prenotami.esteri.it/Services/Booking/5810) (Consolato Barcellona).
 
-## Why Stagehand over raw Playwright?
+## Architecture
 
-Old monitor used raw Playwright with brittle CSS selectors and dialog interception — which broke nightly at midnight when the site gets congested (timeout 30s exceeded).
+**Time-based mode switching:**
 
-**Stagehand approach:**
-- `stagehand.act("click the passport booking link")` — natural language, self-healing when the UI changes, better timeout handling under load
-- `stagehand.extract()` — reads actual page state to detect slot availability, no flaky dialog interception
-- Cookie persistence across restarts — no more Chrome ProcessSingleton fights
-- Auto-reinit on browser crash — clean recovery loop
+| Window | Mode | Cost | Why |
+|--------|------|------|-----|
+| 00:30 – 23:30 | Playwright | free | fast, deterministic, zero API calls |
+| 23:30 – 00:30 | Stagehand + Gemini | ~€0.40/night | site congested, Playwright times out |
+
+Prenotami releases new slots at midnight — that's when `elementHandle.click: Timeout 30s exceeded` happens. Stagehand uses natural language `act()` which is self-healing and handles slow sites better. For the other 23 hours, Playwright is free and reliable.
+
+**Cookie handoff on switch:**
+- Playwright (persistent Chrome profile) → saves cookies to `cookies.json`
+- Stagehand restores from `cookies.json` → no re-login needed
 
 ## Setup
 
 ```bash
 cp .env.example .env
-# edit .env with your credentials
+# edit .env with credentials + API keys
 npm install
+npx playwright install chromium  # if not already installed
 npm start
 ```
 
-## Config
+## .env
 
-All config in `.env`. See `.env.example`.
-
-## Notifications
-
-- **Pinger** — iPhone push when slot found or error
-- **Discord** — same + intelligence report (form fields, available dates)
+```
+PRENOTAMI_EMAIL=your@email.com
+PRENOTAMI_PASSWORD=yourpassword
+PINGER_USER=matlo
+PINGER_URL=https://...
+DISCORD_TOKEN=...
+DISCORD_CHANNEL=...
+GOOGLE_GENERATIVE_AI_API_KEY=...   # for Stagehand/Gemini (1h/night only)
+```
 
 ## Files
 
 ```
-monitor.mjs         — entry point, main loop
-lib/config.mjs      — all config from .env
-lib/browser.mjs     — Stagehand init + cookie persistence + login
-lib/slots.mjs       — AI-powered slot detection + booking flow exploration
-lib/notify.mjs      — Pinger + Discord notifications
+monitor.mjs                  — main loop + time-based mode switching
+lib/config.mjs               — all config from .env
+lib/playwright-check.mjs     — free Playwright check (23h/day)
+lib/stagehand-check.mjs      — Stagehand/Gemini check (midnight window)
+lib/notify.mjs               — Pinger + Discord notifications
 ```
+
+## Notifications
+
+- **slot found** → Pinger (iPhone) + Discord con form intelligence
+- **diocan alert** → ogni 3h se nessuno slot
+- **mode switch** → Discord al passaggio playwright↔stagehand
+- **crash** → Pinger + Discord

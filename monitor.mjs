@@ -1,66 +1,127 @@
 /**
- * prenotami-monitor — AI-powered slot monitor
+ * prenotami-monitor — time-based Playwright/Stagehand hybrid
  *
- * Monitors prenotami.esteri.it/Services/Booking/5810 for available passport slots
- * at Consolato Generale d'Italia a Barcellona.
+ * 00:30 – 23:30  →  Playwright (free, deterministic, zero API cost)
+ * 23:30 – 00:30  →  Stagehand + Gemini (AI-driven, handles midnight congestion)
  *
- * Architecture:
- * - Stagehand LOCAL (AI-driven browser) instead of raw Playwright
- * - Natural language act() calls are self-healing — no brittle CSS selectors
- * - Cookie persistence keeps sessions alive across restarts (no persistent profile needed)
- * - Auto-reinit on browser crash — no ProcessSingleton fights
+ * Why time-based?
+ * Prenotami releases new slots at midnight — site is slow/congested 23:30–00:30.
+ * Playwright times out under load (elementHandle.click: Timeout 30s exceeded).
+ * Stagehand handles it with natural language + longer retries, but costs ~$0.50/night.
+ * For the other 23 hours, Playwright is free, fast, and reliable.
  *
- * Why Stagehand over raw Playwright:
- * - Old: elementHandle.click() → timeout at midnight when site is slow/congested
- * - New: stagehand.act("click the passport booking link") → AI finds & retries naturally
- * - Old: brittle dialog interception for "esauriti" detection
- * - New: stagehand.extract() reads actual page state, language-agnostic
+ * Cookie handoff:
+ * Playwright saves cookies → JSON → Stagehand restores them on switch.
+ * Stagehand saves cookies → JSON → Playwright restores on exit (uses persistent profile anyway).
  */
 import "dotenv/config";
-import { initBrowser, closeBrowser } from "./lib/browser.mjs";
-import { checkSlots } from "./lib/slots.mjs";
+import * as PW from "./lib/playwright-check.mjs";
+import * as SH from "./lib/stagehand-check.mjs";
 import { notify } from "./lib/notify.mjs";
-import { CHECK_INTERVAL_MS, BOOKING_URL } from "./lib/config.mjs";
+import { CHECK_INTERVAL_MS } from "./lib/config.mjs";
 
-let running = true;
+// ─── Time window ─────────────────────────────────────────────────────────────
 
-async function sleep(ms) {
+/**
+ * Returns true between 23:30 and 00:30 (1 hour window around midnight).
+ */
+function isStagehandWindow() {
+  const now = new Date();
+  const totalMin = now.getHours() * 60 + now.getMinutes();
+  const START = 23 * 60 + 30; // 23:30 = 1410
+  const END   =  0 * 60 + 30; //  0:30 =   30
+  // window crosses midnight: active if ≥ 23:30 OR < 00:30
+  return totalMin >= START || totalMin < END;
+}
+
+function currentMode() {
+  return isStagehandWindow() ? "stagehand" : "playwright";
+}
+
+// ─── Sleep ────────────────────────────────────────────────────────────────────
+
+function sleep(ms) {
   return new Promise(r => setTimeout(r, ms));
 }
 
-async function main() {
-  console.log("=== Prenotami Monitor started ===");
-  console.log(`Checking every ${CHECK_INTERVAL_MS / 1000}s`);
-  console.log(`Booking URL: ${BOOKING_URL}`);
+// ─── Main loop ────────────────────────────────────────────────────────────────
 
-  await notify(
-    "Prenotami Monitor",
-    "Monitor avviato — controllo ogni minuto slot passaporto Barcellona"
-  );
+let running = true;
+let activeMode = null; // track what's currently initialized
 
-  while (running) {
-    try {
-      await initBrowser();
-      console.log("[browser] Stagehand initialized");
+async function switchTo(mode) {
+  if (mode === activeMode) return;
 
-      // Keep running until browser error
-      while (running) {
-        await checkSlots();
-        await sleep(CHECK_INTERVAL_MS);
-      }
+  if (activeMode === "playwright") {
+    console.log("[switch] playwright → stagehand");
+    await PW.saveCookies();    // export session to JSON
+    await PW.closeBrowser();   // close Chrome persistent context
+    await SH.initStagehand();  // Stagehand restores from JSON
+    await notify("Prenotami Monitor", "🤖 switching to Stagehand (23:30–00:30 finestra mezzanotte)");
+  } else if (activeMode === "stagehand") {
+    console.log("[switch] stagehand → playwright");
+    await SH.closeStagehand(); // saves cookies to JSON, closes Stagehand
+    // Playwright uses persistent profile — session already on disk, no restore needed
+    await notify("Prenotami Monitor", "⚙️ switching to Playwright (00:30–23:30)");
+  } else {
+    // Cold start
+    if (mode === "stagehand") {
+      await SH.initStagehand();
+    }
+    // Playwright initializes lazily on first getBrowser() call
+  }
 
-    } catch (err) {
-      console.error("[main] browser error, reinitializing:", err.message);
-      await closeBrowser();
-      console.log("[main] waiting 30s before retry...");
+  activeMode = mode;
+  console.log(`[mode] active: ${activeMode}`);
+}
+
+async function runOnce() {
+  const mode = currentMode();
+  await switchTo(mode);
+
+  try {
+    if (mode === "stagehand") {
+      await SH.checkSlots();
+    } else {
+      await PW.checkSlots();
+    }
+  } catch (err) {
+    // Errors already logged and notified inside each module.
+    // If Playwright crashed, it already reset its browser context.
+    // If Stagehand crashed, reinitialize it.
+    if (mode === "stagehand" && activeMode === "stagehand") {
+      console.log("[main] stagehand error — reinitializing in 30s...");
+      await SH.closeStagehand();
+      activeMode = null;
       await sleep(30_000);
     }
   }
 }
 
-// Graceful shutdown
-process.on("SIGINT",  () => { running = false; closeBrowser().then(() => process.exit(0)); });
-process.on("SIGTERM", () => { running = false; closeBrowser().then(() => process.exit(0)); });
+async function main() {
+  console.log("=== Prenotami Monitor started ===");
+  console.log(`Check interval: ${CHECK_INTERVAL_MS / 1000}s`);
+  console.log(`Mode at startup: ${currentMode()}`);
+
+  await notify("Prenotami Monitor", "Monitor avviato — Playwright 23h/day, Stagehand a mezzanotte");
+
+  while (running) {
+    await runOnce();
+    await sleep(CHECK_INTERVAL_MS);
+  }
+}
+
+// ─── Shutdown ─────────────────────────────────────────────────────────────────
+
+async function shutdown() {
+  running = false;
+  await PW.closeBrowser();
+  await SH.closeStagehand();
+  process.exit(0);
+}
+
+process.on("SIGINT",  shutdown);
+process.on("SIGTERM", shutdown);
 
 main().catch(async (err) => {
   console.error("Fatal:", err);
