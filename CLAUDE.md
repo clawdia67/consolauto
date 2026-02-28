@@ -1,4 +1,4 @@
-# CLAUDE.md — Agent Guide for prenotami-monitor
+# CLAUDE.md — Agent Guide for consolauto
 
 This file tells you (the AI agent) what this project does, how it's structured, and what to watch out for when making changes.
 

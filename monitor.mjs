@@ -1,11 +1,11 @@
 /**
- * prenotami-monitor — time-based Playwright/Stagehand hybrid
+ * consolauto — time-based Playwright/Stagehand hybrid
  *
  * 00:30 – 23:30  →  Playwright (free, deterministic, zero API cost)
  * 23:30 – 00:30  →  Stagehand + Gemini (AI-driven, handles midnight congestion)
  *
  * Why time-based?
- * Prenotami releases new slots at midnight — site is slow/congested 23:30–00:30.
+ * prenotami releases new slots at midnight — site is slow/congested 23:30–00:30.
  * Playwright times out under load (elementHandle.click: Timeout 30s exceeded).
  * Stagehand handles it with natural language + longer retries, but costs ~$0.50/night.
  * For the other 23 hours, Playwright is free, fast, and reliable.
@@ -57,12 +57,12 @@ async function switchTo(mode) {
     await PW.saveCookies();    // export session to JSON
     await PW.closeBrowser();   // close Chrome persistent context
     await SH.initStagehand();  // Stagehand restores from JSON
-    await notify("Prenotami Monitor", "🤖 switching to Stagehand (23:30–00:30 finestra mezzanotte)");
+    await notify("Consolauto", "🤖 switching to Stagehand (23:30–00:30 finestra mezzanotte)");
   } else if (activeMode === "stagehand") {
     console.log("[switch] stagehand → playwright");
     await SH.closeStagehand(); // saves cookies to JSON, closes Stagehand
     await PW.killStaleChrome(); // clear any lingering Chrome profile lock
-    await notify("Prenotami Monitor", "⚙️ switching to Playwright (00:30–23:30)");
+    await notify("Consolauto", "⚙️ switching to Playwright (00:30–23:30)");
   } else {
     // Cold start — kill any stale Chrome left from previous runs
     await PW.killStaleChrome();
@@ -100,11 +100,11 @@ async function runOnce() {
 }
 
 async function main() {
-  console.log("=== Prenotami Monitor started ===");
+  console.log("=== Consolauto started ===");
   console.log(`Check interval: ${CHECK_INTERVAL_MS / 1000}s`);
   console.log(`Mode at startup: ${currentMode()}`);
 
-  await notify("Prenotami Monitor", "Monitor avviato — Playwright 23h/day, Stagehand a mezzanotte");
+  await notify("Consolauto", "Monitor avviato — Playwright 23h/day, Stagehand a mezzanotte");
 
   while (running) {
     await runOnce();
@@ -126,6 +126,6 @@ process.on("SIGTERM", shutdown);
 
 main().catch(async (err) => {
   console.error("Fatal:", err);
-  await notify("💀 Prenotami Monitor CRASH", err.message.substring(0, 150));
+  await notify("💀 Consolauto CRASH", err.message.substring(0, 150));
   process.exit(1);
 });

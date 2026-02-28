@@ -1,4 +1,4 @@
-# prenotami-monitor
+# consolauto
 
 Automated passport appointment slot monitor for [prenotami.esteri.it](https://prenotami.esteri.it) — specifically for the **Consolato Generale d'Italia a Barcellona** (service ID 5810).
 
@@ -37,8 +37,8 @@ const { hasSlots, reason } = await stagehand.extract(
 ## Setup
 
 ```bash
-git clone https://github.com/clawdia67/prenotami-monitor
-cd prenotami-monitor
+git clone https://github.com/clawdia67/consolauto
+cd consolauto
 npm install
 cp .env.example .env
 # fill in .env
@@ -48,7 +48,7 @@ npm start
 ## Configuration (`.env`)
 
 ```env
-# Prenotami account
+# prenotami.esteri.it account
 PRENOTAMI_EMAIL=your@email.com
 PRENOTAMI_PASSWORD=yourpassword
 
