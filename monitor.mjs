@@ -2,7 +2,7 @@
  * consolauto — time-based Playwright/Stagehand hybrid
  *
  * 00:30 – 23:30  →  Playwright (free, deterministic, zero API cost)
- * 23:30 – 00:30  →  Stagehand + Gemini (AI-driven, handles midnight congestion)
+ * 23:30 – 01:00  →  Stagehand + Gemini (AI-driven, handles midnight congestion + booking flow)
  *
  * Why time-based?
  * prenotami releases new slots at midnight — site is slow/congested 23:30–00:30.
@@ -23,14 +23,14 @@ import { CHECK_INTERVAL_MS } from "./lib/config.mjs";
 // ─── Time window ─────────────────────────────────────────────────────────────
 
 /**
- * Returns true between 23:30 and 00:30 (1 hour window around midnight).
+ * Returns true between 23:30 and 01:00 (1.5 hour window around midnight).
  */
 function isStagehandWindow() {
   const now = new Date();
   const totalMin = now.getHours() * 60 + now.getMinutes();
   const START = 23 * 60 + 30; // 23:30 = 1410
-  const END   =  0 * 60 + 30; //  0:30 =   30
-  // window crosses midnight: active if ≥ 23:30 OR < 00:30
+  const END   =  1 * 60 +  0; //  1:00 =   60
+  // window crosses midnight: active if ≥ 23:30 OR < 01:00
   return totalMin >= START || totalMin < END;
 }
 
