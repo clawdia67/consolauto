@@ -19,6 +19,14 @@ import * as PW from "./lib/playwright-check.mjs";
 import * as SH from "./lib/stagehand-check.mjs";
 import { notify } from "./lib/notify.mjs";
 import { CHECK_INTERVAL_MS } from "./lib/config.mjs";
+import { logEvent } from "./lib/events.mjs";
+
+// ─── Timestamp all console output ────────────────────────────────────────────
+const _log = console.log.bind(console);
+const _err = console.error.bind(console);
+const ts = () => new Date().toISOString().replace("T", " ").slice(0, 19);
+console.log = (...a) => _log(`[${ts()}]`, ...a);
+console.error = (...a) => _err(`[${ts()}]`, ...a);
 
 // ─── Time window ─────────────────────────────────────────────────────────────
 
@@ -103,6 +111,7 @@ async function main() {
   console.log("=== Consolauto started ===");
   console.log(`Check interval: ${CHECK_INTERVAL_MS / 1000}s`);
   console.log(`Mode at startup: ${currentMode()}`);
+  logEvent("startup", { interval_s: CHECK_INTERVAL_MS / 1000 });
 
   await notify("Consolauto", "Monitor avviato — Playwright 23h/day, Stagehand a mezzanotte");
 
